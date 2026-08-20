@@ -1,0 +1,37 @@
+name: Setup Gradle Wrapper
+
+on:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Gradle Wrapper
+        run: |
+          # Install Java
+          sudo apt-get install -y openjdk-17-jdk
+          java -version
+          
+          # Check if gradle is installed, if not install it
+          if ! command -v gradle &> /dev/null; then
+            echo "Installing Gradle..."
+            # Download Gradle 8.0+
+            mkdir -p /tmp/gradle
+            cd /tmp/gradle
+            wget https://services.gradle.org/distributions/gradle-8.0-bin.zip
+            unzip gradle-8.0-bin.zip
+            export PATH=$PATH:/tmp/gradle/gradle-8.0/bin
+          fi
+
+          # Generate the wrapper files
+          gradle wrapper --gradle-version 8.0
+
+      - name: Commit Wrapper Files
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Add Gradle Wrapper files"
+          file_pattern: "gradlew gradlew.bat gradle/wrapper"
