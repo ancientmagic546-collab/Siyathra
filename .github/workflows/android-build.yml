@@ -5,6 +5,7 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,21 +14,28 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: set up JDK 17
+    - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+    - name: Generate debug keystore
+      run: |
+        keytool -genkeypair -v -keystore debug.keystore -storepass android \
+          -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+          -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-    - name: Build with Gradle
-      run: ./gradlew assembleDebug
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: 9.1.0
+
+    - name: Build debug APK
+      run: gradle assembleDebug --stacktrace
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: my-app-apk
+        name: siyathra-debug-apk
         path: app/build/outputs/apk/debug/app-debug.apk
