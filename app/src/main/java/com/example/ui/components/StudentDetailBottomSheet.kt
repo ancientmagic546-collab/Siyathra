@@ -16,16 +16,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Functions
+import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Notes
+import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -40,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,9 +55,6 @@ import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.SecondaryTeal
 import com.example.ui.theme.StatusPaidGreen
 import com.example.ui.theme.StatusUnpaidRed
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,7 +63,9 @@ fun StudentDetailBottomSheet(
     paymentsList: List<MonthlyPayment>,
     onDismiss: () -> Unit,
     onEditStudent: () -> Unit,
-    onDeleteStudent: () -> Unit
+    onDeleteStudent: () -> Unit,
+    onRecordClassLeaving: (() -> Unit)? = null,
+    onViewReceipt: ((MonthlyPayment) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -88,7 +92,7 @@ fun StudentDetailBottomSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(50.dp)
+                            .size(52.dp)
                             .clip(CircleShape)
                             .background(PrimaryBlue.copy(alpha = 0.12f)),
                         contentAlignment = Alignment.Center
@@ -109,15 +113,20 @@ fun StudentDetailBottomSheet(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "${student.medium} Medium",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = PrimaryBlue,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(PrimaryBlue.copy(alpha = 0.1f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = PrimaryBlue.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = student.gradeDisplayName,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = PrimaryBlue,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                             if (student.phone.isNotBlank()) {
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
@@ -130,12 +139,25 @@ fun StudentDetailBottomSheet(
                     }
                 }
 
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onRecordClassLeaving != null) {
+                        IconButton(onClick = onRecordClassLeaving) {
+                            Icon(
+                                Icons.Default.PersonRemove,
+                                contentDescription = "Log Class Leaving",
+                                tint = Color(0xFFE65100)
+                            )
+                        }
+                    }
                     IconButton(onClick = onEditStudent) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit", tint = PrimaryBlue)
                     }
                     IconButton(onClick = onDeleteStudent) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }
@@ -152,13 +174,27 @@ fun StudentDetailBottomSheet(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Enrolled Subjects & Fee Schedule",
+                        text = "Enrolled Classes & Fee Schedule",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(10.dp))
 
                     student.subjects.forEach { (subject, fee) ->
+                        val medium = student.getMediumForSubject(subject)
+                        val icon = when (subject) {
+                            Student.SUBJECT_MATHS -> Icons.Default.Functions
+                            Student.SUBJECT_SCIENCE -> Icons.Default.Science
+                            Student.SUBJECT_COMMERCE -> Icons.Default.TrendingUp
+                            else -> Icons.Default.MenuBook
+                        }
+                        val tint = when (subject) {
+                            Student.SUBJECT_MATHS -> PrimaryBlue
+                            Student.SUBJECT_SCIENCE -> SecondaryTeal
+                            Student.SUBJECT_COMMERCE -> Color(0xFFE65100)
+                            else -> Color(0xFF673AB7)
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -166,23 +202,30 @@ fun StudentDetailBottomSheet(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = Icons.Default.Book,
+                                    imageVector = icon,
                                     contentDescription = null,
-                                    tint = if (subject == "Maths") PrimaryBlue else SecondaryTeal,
+                                    tint = tint,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = subject,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
-                                )
+                                Column {
+                                    Text(
+                                        text = subject,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                    )
+                                    Text(
+                                        text = if (subject == Student.SUBJECT_ENGLISH) "Standard Medium" else "$medium Medium",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                             Text(
                                 text = Student.formatCurrency(fee),
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
 
                     HorizontalDivider(
@@ -195,7 +238,7 @@ fun StudentDetailBottomSheet(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Total Monthly Requirement",
+                            text = "Total Monthly Fee Due",
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                             color = PrimaryBlue
                         )
@@ -211,7 +254,12 @@ fun StudentDetailBottomSheet(
             if (student.notes.isNotBlank()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Notes, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        Icons.Default.Notes,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = student.notes,
@@ -255,7 +303,7 @@ fun StudentDetailBottomSheet(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(260.dp),
+                        .height(240.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(studentPayments) { p ->
@@ -299,6 +347,32 @@ fun StudentDetailBottomSheet(
                                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                                             color = StatusUnpaidRed
                                         )
+                                    }
+                                }
+
+                                if (onViewReceipt != null && p.amountPaid > 0) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { onViewReceipt(p) },
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ReceiptLong,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp),
+                                                tint = PrimaryBlue
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "View Receipt",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = PrimaryBlue
+                                            )
+                                        }
                                     }
                                 }
                             }

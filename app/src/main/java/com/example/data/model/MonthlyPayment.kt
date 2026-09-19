@@ -7,7 +7,14 @@ import java.util.Locale
 enum class PaymentStatus {
     PAID,
     PARTIAL,
-    UNPAID
+    UNPAID;
+
+    val displayName: String
+        get() = when (this) {
+            PAID -> "Paid"
+            PARTIAL -> "Partial"
+            UNPAID -> "Unpaid"
+        }
 }
 
 data class PaymentRecord(

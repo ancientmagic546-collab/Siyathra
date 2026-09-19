@@ -1,6 +1,6 @@
 {
   "name": "Siyathra",
-  "description": "Educational Institution Student & Payment Management App with Firebase Auth and Firestore Cloud Sync",
+  "description": "Educational Institution Student, Payment & Activity History Management App with Firebase Auth and Firestore Cloud Sync",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

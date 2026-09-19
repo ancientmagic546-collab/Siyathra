@@ -2,7 +2,6 @@ package com.example
 
 import android.os.Bundle
 import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -12,6 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.TuitionDashboardScreen
@@ -20,7 +20,7 @@ import com.example.ui.viewmodel.TuitionViewModel
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private val viewModel: TuitionViewModel by viewModels()
 
@@ -31,24 +31,32 @@ class MainActivity : ComponentActivity() {
         setContent {
             EduManagerTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    EduManagerApp(viewModel = viewModel)
+                    EduManagerApp(
+                        activity = this@MainActivity,
+                        viewModel = viewModel
+                    )
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshBiometricSecurityStatus()
     }
 
     private fun initFirebase() {
         try {
             if (FirebaseApp.getApps(applicationContext).isEmpty()) {
                 val options = FirebaseOptions.Builder()
-                    .setApiKey("AIzaSyDvES9MCp_o0DRQ_K1aX_gEqI9yIAQmYJY")
-                    .setApplicationId("1:318717678552:web:10fe68260ca3c79dea98ad")
-                    .setProjectId("sithuminituition")
-                    .setGcmSenderId("318717678552")
-                    .setStorageBucket("sithuminituition.firebasestorage.app")
+                    .setApiKey("AIzaSyByYaH4xOhvzpPpvNyo70IjkuRC9SmeiLc")
+                    .setApplicationId("1:350743183843:web:61ea8bf3e5b818679d60d6")
+                    .setProjectId("siyathra-52db5")
+                    .setGcmSenderId("350743183843")
+                    .setStorageBucket("siyathra-52db5.firebasestorage.app")
                     .build()
                 FirebaseApp.initializeApp(applicationContext, options)
-                Log.d("MainActivity", "FirebaseApp successfully initialized with sithuminituition config.")
+                Log.d("MainActivity", "FirebaseApp successfully initialized with siyathra-52db5 config.")
             }
         } catch (e: Throwable) {
             Log.w("MainActivity", "FirebaseApp init error: ${e.message}")
@@ -57,10 +65,19 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun EduManagerApp(viewModel: TuitionViewModel) {
+fun EduManagerApp(
+    activity: FragmentActivity,
+    viewModel: TuitionViewModel
+) {
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val isLoading by viewModel.isAuthLoading.collectAsStateWithLifecycle()
     val loginError by viewModel.loginError.collectAsStateWithLifecycle()
+
+    val isBiometricSupported by viewModel.isBiometricSupported.collectAsStateWithLifecycle()
+    val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsStateWithLifecycle()
+    val isPasswordLoginRequired by viewModel.isPasswordLoginRequired.collectAsStateWithLifecycle()
+    val remainingPasswordTimeDesc by viewModel.remainingPasswordTimeDesc.collectAsStateWithLifecycle()
+    val biometricError by viewModel.biometricError.collectAsStateWithLifecycle()
 
     Crossfade(targetState = currentUser != null, label = "auth_screen_fade") { isAuthenticated ->
         if (isAuthenticated) {
@@ -69,7 +86,21 @@ fun EduManagerApp(viewModel: TuitionViewModel) {
             LoginScreen(
                 isLoading = isLoading,
                 errorMessage = loginError,
+                isBiometricSupported = isBiometricSupported,
+                isBiometricEnabled = isBiometricEnabled,
+                isPasswordLoginRequired = isPasswordLoginRequired,
+                remainingPasswordTimeDesc = remainingPasswordTimeDesc,
+                biometricError = biometricError,
+                onBiometricClick = {
+                    viewModel.promptBiometricUnlock(activity)
+                },
+                onResetBiometric = {
+                    viewModel.resetBiometric()
+                },
                 onLoginClick = { email, pass -> viewModel.login(email, pass) },
+                onResetPassword = { email, onResult ->
+                    viewModel.resetPassword(email, onResult)
+                },
                 onDemoLoginClick = { viewModel.loginDemo() }
             )
         }
