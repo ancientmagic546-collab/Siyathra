@@ -732,6 +732,18 @@ class TuitionViewModel(
         _receiptTarget.value = transaction
     }
 
+    fun deleteHistoryEvent(eventId: String) {
+        tuitionRepository.deleteHistoryEvent(eventId)
+    }
+
+    fun deleteHistoryEvents(eventIds: Set<String>) {
+        tuitionRepository.deleteHistoryEvents(eventIds)
+    }
+
+    fun deleteAllHistoryEvents() {
+        tuitionRepository.deleteAllHistoryEvents()
+    }
+
     // --- Navigation Flow Methods ---
 
     fun onGradeSelected(grade: Int) {
@@ -956,6 +968,10 @@ class TuitionViewModel(
     fun logout() {
         authRepository.signOut()
         refreshBiometricSecurityStatus()
+    }
+
+    fun verifyFirestoreStructure(onResult: (Boolean, String) -> Unit) {
+        tuitionRepository.checkAndInitializeFirestoreStructure(onResult)
     }
 
     override fun onCleared() {

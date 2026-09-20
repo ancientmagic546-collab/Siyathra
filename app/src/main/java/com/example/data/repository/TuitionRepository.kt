@@ -41,299 +41,106 @@ class TuitionRepository(
             if (FirebaseApp.getApps(context).isNotEmpty()) {
                 firestore = FirebaseFirestore.getInstance()
                 _isCloudConnected.value = true
+                checkAndInitializeFirestoreStructure()
             }
         } catch (e: Exception) {
             Log.e("TuitionRepository", "FirebaseFirestore init error", e)
             _isCloudConnected.value = false
         }
 
-        initInitialData()
         startCloudListeners()
     }
 
-    private fun initInitialData() {
-        // Sample realistic students across grades 6 to 11 with Maths, Science, Commerce (G10-11), and English
-        val sampleStudents = listOf(
-            Student(
-                id = "std_101",
-                name = "Kasun Perera",
-                phone = "+94 77 123 4567",
-                grade = 11,
-                medium = Student.MEDIUM_SINHALA,
-                joinedDate = System.currentTimeMillis() - 86400000L * 30,
-                subjects = mapOf("Maths" to 2500.0, "Commerce" to 2500.0, "English" to 1200.0),
-                subjectMediums = mapOf("Maths" to Student.MEDIUM_SINHALA, "Commerce" to Student.MEDIUM_SINHALA, "English" to Student.MEDIUM_GENERAL),
-                notes = "O/L Exam Candidate"
-            ),
-            Student(
-                id = "std_102",
-                name = "Nimali Fernando",
-                phone = "+94 71 987 6543",
-                grade = 11,
-                medium = Student.MEDIUM_SINHALA,
-                joinedDate = System.currentTimeMillis() - 86400000L * 25,
-                subjects = mapOf("Maths" to 2500.0, "Science" to 2500.0),
-                subjectMediums = mapOf("Maths" to Student.MEDIUM_SINHALA, "Science" to Student.MEDIUM_SINHALA),
-                notes = "O/L Maths & Science Sinhala"
-            ),
-            Student(
-                id = "std_103",
-                name = "Dilshan Silva",
-                phone = "+94 75 555 4321",
-                grade = 10,
-                medium = Student.MEDIUM_ENGLISH,
-                joinedDate = System.currentTimeMillis() - 86400000L * 20,
-                subjects = mapOf("Commerce" to 2500.0, "English" to 1200.0),
-                subjectMediums = mapOf("Commerce" to Student.MEDIUM_ENGLISH, "English" to Student.MEDIUM_GENERAL),
-                notes = "English Medium Commerce Stream"
-            ),
-            Student(
-                id = "std_104",
-                name = "Samanthi Jayasinghe",
-                phone = "+94 78 888 1122",
-                grade = 10,
-                medium = Student.MEDIUM_ENGLISH,
-                joinedDate = System.currentTimeMillis() - 86400000L * 15,
-                subjects = mapOf("Science" to 2500.0, "English" to 1200.0),
-                subjectMediums = mapOf("Science" to Student.MEDIUM_ENGLISH, "English" to Student.MEDIUM_GENERAL),
-                notes = "Grade 10 Science & English"
-            ),
-            Student(
-                id = "std_105",
-                name = "Ravindu Senanayake",
-                phone = "+94 76 333 9988",
-                grade = 9,
-                medium = Student.MEDIUM_SINHALA,
-                joinedDate = System.currentTimeMillis() - 86400000L * 12,
-                subjects = mapOf("Maths" to 2500.0, "Science" to 2500.0),
-                subjectMediums = mapOf("Maths" to Student.MEDIUM_SINHALA, "Science" to Student.MEDIUM_SINHALA),
-                notes = "Grade 9 Active Learner"
-            ),
-            Student(
-                id = "std_106",
-                name = "Anuki Wickramasinghe",
-                phone = "+94 70 222 4455",
-                grade = 8,
-                medium = Student.MEDIUM_ENGLISH,
-                joinedDate = System.currentTimeMillis() - 86400000L * 8,
-                subjects = mapOf("Maths" to 2500.0, "Science" to 2500.0, "English" to 1200.0),
-                subjectMediums = mapOf("Maths" to Student.MEDIUM_ENGLISH, "Science" to Student.MEDIUM_ENGLISH, "English" to Student.MEDIUM_GENERAL),
-                notes = "Grade 8 All 3 Subjects"
-            ),
-            Student(
-                id = "std_107",
-                name = "Kavishka Bandara",
-                phone = "+94 72 444 8877",
-                grade = 7,
-                medium = Student.MEDIUM_SINHALA,
-                joinedDate = System.currentTimeMillis() - 86400000L * 6,
-                subjects = mapOf("Maths" to 2500.0),
-                subjectMediums = mapOf("Maths" to Student.MEDIUM_SINHALA),
-                notes = "Grade 7 Maths"
-            ),
-            Student(
-                id = "std_108",
-                name = "Methmi Alwis",
-                phone = "+94 77 999 1100",
-                grade = 6,
-                medium = Student.MEDIUM_SINHALA,
-                joinedDate = System.currentTimeMillis() - 86400000L * 3,
-                subjects = mapOf("Science" to 2500.0, "English" to 1200.0),
-                subjectMediums = mapOf("Science" to Student.MEDIUM_SINHALA, "English" to Student.MEDIUM_GENERAL),
-                notes = "Grade 6 Junior Batch"
-            )
-        )
+    /**
+     * Checks if the required system configuration documents and collection schemas exist in Firestore.
+     * If missing (e.g. after wiping Firestore), creates them automatically.
+     * If they already exist, preserves and uses the existing configurations.
+     */
+    fun checkAndInitializeFirestoreStructure(onComplete: ((Boolean, String) -> Unit)? = null) {
+        val db = firestore
+        if (db == null) {
+            Log.w("TuitionRepository", "Firestore instance not available for structure check.")
+            onComplete?.invoke(false, "Firestore instance not available")
+            return
+        }
 
-        _students.value = sampleStudents
+        Log.d("TuitionRepository", "Checking required Firestore documents and collections structure...")
 
-        val currentMonth = MonthlyPayment.getCurrentMonthKey()
-        val prevMonth = "2026-07"
-        val samplePayments = mutableListOf<MonthlyPayment>()
-
-        // Generate payments for current month
-        sampleStudents.forEachIndexed { index, student ->
-            val totalDue = student.totalMonthlyFee
-            val (paidAmount, note) = when (index % 4) {
-                0 -> Pair(totalDue, "Full monthly tuition payment")
-                1 -> Pair(2500.0, "1st installment cash receipt")
-                2 -> Pair(totalDue, "Bank transfer ref #SYT${5100 + index}")
-                else -> Pair(0.0, "")
+        // 1. Check and initialize system_config / metadata document
+        db.collection("system_config").document("metadata").get()
+            .addOnSuccessListener { doc ->
+                if (doc == null || !doc.exists()) {
+                    Log.i("TuitionRepository", "system_config/metadata missing. Auto-creating required metadata...")
+                    val metadata = mapOf(
+                        "instituteName" to "Siyathra Institute",
+                        "status" to "active",
+                        "grades" to listOf(6, 7, 8, 9, 10, 11),
+                        "subjects" to listOf("Maths", "Science", "Commerce", "English"),
+                        "mediums" to listOf(Student.MEDIUM_SINHALA, Student.MEDIUM_ENGLISH),
+                        "currency" to "LKR",
+                        "schemaVersion" to "1.0",
+                        "createdAt" to System.currentTimeMillis(),
+                        "lastVerifiedAt" to System.currentTimeMillis()
+                    )
+                    db.collection("system_config").document("metadata")
+                        .set(metadata, SetOptions.merge())
+                        .addOnSuccessListener {
+                            Log.i("TuitionRepository", "system_config/metadata created successfully.")
+                        }
+                } else {
+                    Log.i("TuitionRepository", "Existing system_config/metadata found in Firestore. Using existing configuration.")
+                }
             }
-            val timeOffset = index * 43200000L // staggered hours
-            val timestamp = System.currentTimeMillis() - timeOffset
-            samplePayments.add(
-                MonthlyPayment(
-                    id = "${student.id}_$currentMonth",
-                    studentId = student.id,
-                    studentName = student.name,
-                    monthKey = currentMonth,
-                    totalFeeDue = totalDue,
-                    amountPaid = paidAmount,
-                    lastUpdated = timestamp,
-                    history = if (paidAmount > 0) listOf(
-                        PaymentRecord(
-                            amount = paidAmount,
-                            timestamp = timestamp,
-                            note = note
-                        )
-                    ) else emptyList()
-                )
-            )
-        }
+            .addOnFailureListener { e ->
+                Log.w("TuitionRepository", "Failed checking system_config/metadata: ${e.message}")
+            }
 
-        // Generate historical payments for previous month (July 2026)
-        sampleStudents.forEachIndexed { index, student ->
-            val totalDue = student.totalMonthlyFee
-            val paidAmount = if (index % 5 == 4) 0.0 else totalDue
-            val timeOffset = 30L * 86400000L + (index * 86400000L / 2)
-            val timestamp = System.currentTimeMillis() - timeOffset
-            val note = if (index % 2 == 0) "Cash at counter" else "Online bank transfer"
-            samplePayments.add(
-                MonthlyPayment(
-                    id = "${student.id}_$prevMonth",
-                    studentId = student.id,
-                    studentName = student.name,
-                    monthKey = prevMonth,
-                    totalFeeDue = totalDue,
-                    amountPaid = paidAmount,
-                    lastUpdated = timestamp,
-                    history = if (paidAmount > 0) listOf(
-                        PaymentRecord(
-                            amount = paidAmount,
-                            timestamp = timestamp,
-                            note = note
-                        )
-                    ) else emptyList()
-                )
-            )
-        }
+        // 2. Check and initialize system_config / schema document
+        db.collection("system_config").document("schema").get()
+            .addOnSuccessListener { doc ->
+                if (doc == null || !doc.exists()) {
+                    Log.i("TuitionRepository", "system_config/schema missing. Creating schema specification...")
+                    val schema = mapOf(
+                        "collections" to mapOf(
+                            "students" to "Stores student profiles, enrolled grades, subjects, and contact info",
+                            "monthly_payments" to "Tracks monthly fee amounts due, amount paid, and receipts",
+                            "history_events" to "Real-time chronological activity audit for enrollments, fee collections, and class leaving",
+                            "system_config" to "System settings, defaults, and institution metadata"
+                        ),
+                        "initializedAt" to System.currentTimeMillis(),
+                        "lastVerifiedAt" to System.currentTimeMillis()
+                    )
+                    db.collection("system_config").document("schema")
+                        .set(schema, SetOptions.merge())
+                } else {
+                    Log.i("TuitionRepository", "Existing system_config/schema found in Firestore. Using existing schema.")
+                }
+            }
 
-        _payments.value = samplePayments
-
-        // Generate unified chronological history (Enrollments, Payments, Class Leaving)
-        val sampleHistoryEvents = mutableListOf<TuitionHistoryItem>()
-
-        // 1. Initial Enrollments
-        sampleStudents.forEachIndexed { index, student ->
-            sampleHistoryEvents.add(
-                TuitionHistoryItem(
-                    id = "evt_enr_${student.id}",
-                    type = HistoryEventType.ENROLLMENT,
-                    studentId = student.id,
-                    studentName = student.name,
-                    studentGrade = student.grade,
-                    studentMedium = student.medium,
-                    studentPhone = student.phone,
-                    title = "Student Enrolled: ${student.name}",
-                    description = "Enrolled in Grade ${student.grade} (${student.medium}) • Subjects: ${student.subjects.keys.joinToString(", ")} • Fee: ${Student.formatCurrency(student.totalMonthlyFee)}",
-                    timestamp = student.joinedDate,
-                    subjects = student.subjects.keys.toList(),
-                    note = student.notes.ifBlank { "Registered for academic year" }
-                )
-            )
-        }
-
-        // 2. Initial Payments
-        samplePayments.filter { it.amountPaid > 0 }.forEachIndexed { index, payment ->
-            val receiptId = "REC-${payment.monthKey.replace("-", "")}-${1001 + index}"
-            val student = sampleStudents.find { it.id == payment.studentId }
-            sampleHistoryEvents.add(
-                TuitionHistoryItem(
-                    id = "evt_pay_${payment.id}",
-                    type = HistoryEventType.PAYMENT,
-                    studentId = payment.studentId,
-                    studentName = payment.studentName,
-                    studentGrade = student?.grade ?: 10,
-                    studentMedium = student?.medium ?: Student.MEDIUM_SINHALA,
-                    studentPhone = student?.phone ?: "",
-                    title = "Fee Payment: ${Student.formatCurrency(payment.amountPaid)}",
-                    description = "Tuition payment received for ${MonthlyPayment.getMonthDisplayName(payment.monthKey)} • Receipt: #$receiptId",
-                    timestamp = payment.lastUpdated,
-                    amount = payment.amountPaid,
-                    receiptId = receiptId,
-                    monthKey = payment.monthKey,
-                    note = payment.history.firstOrNull()?.note ?: "Tuition payment confirmed"
-                )
-            )
-        }
-
-        // 3. Realistic Class Leaving / Departures
-        val now = System.currentTimeMillis()
-        sampleHistoryEvents.add(
-            TuitionHistoryItem(
-                id = "evt_leave_01",
-                type = HistoryEventType.CLASS_LEAVING,
-                studentId = "std_arch_01",
-                studentName = "Hirun Wickramasinghe",
-                studentGrade = 10,
-                studentMedium = Student.MEDIUM_SINHALA,
-                studentPhone = "+94 77 345 6789",
-                title = "Left Class: Science",
-                description = "Left Grade 10 Science (Sinhala) • Reason: Switched focus to Commerce & Business stream",
-                timestamp = now - (86400000L * 2 + 3600000L * 4), // 2 days ago
-                subjects = listOf("Science"),
-                subjectLeft = "Science",
-                departureReason = "Switched to Commerce Stream",
-                note = "Academic transfer approved by coordinator"
-            )
-        )
-        sampleHistoryEvents.add(
-            TuitionHistoryItem(
-                id = "evt_leave_02",
-                type = HistoryEventType.CLASS_LEAVING,
-                studentId = "std_arch_02",
-                studentName = "Thisara Mendis",
-                studentGrade = 11,
-                studentMedium = Student.MEDIUM_SINHALA,
-                studentPhone = "+94 71 888 4321",
-                title = "Student Left Tuition: Thisara Mendis",
-                description = "Withdrawn from Grade 11 (Sinhala) • Reason: Relocated with family to Kurunegala district",
-                timestamp = now - (86400000L * 5 + 3600000L * 6), // 5 days ago
-                subjects = listOf("Maths", "Science"),
-                subjectLeft = "All Classes",
-                departureReason = "Family Relocation",
-                note = "Issued clearance statement & completed materials"
-            )
-        )
-        sampleHistoryEvents.add(
-            TuitionHistoryItem(
-                id = "evt_leave_03",
-                type = HistoryEventType.CLASS_LEAVING,
-                studentId = "std_arch_03",
-                studentName = "Dinuka Silva",
-                studentGrade = 9,
-                studentMedium = Student.MEDIUM_SINHALA,
-                studentPhone = "+94 76 111 2233",
-                title = "Left Class: Maths",
-                description = "Left Grade 9 Maths (Sinhala) • Reason: Time slot clash with school athletics practice",
-                timestamp = now - (86400000L * 10 + 3600000L * 2), // 10 days ago
-                subjects = listOf("Maths"),
-                subjectLeft = "Maths",
-                departureReason = "Time Schedule Conflict",
-                note = "Recommended for weekend revision sessions"
-            )
-        )
-        sampleHistoryEvents.add(
-            TuitionHistoryItem(
-                id = "evt_leave_04",
-                type = HistoryEventType.CLASS_LEAVING,
-                studentId = "std_arch_04",
-                studentName = "Sanduni Rajapaksa",
-                studentGrade = 10,
-                studentMedium = Student.MEDIUM_ENGLISH,
-                studentPhone = "+94 72 999 8877",
-                title = "Left Class: English",
-                description = "Left Grade 10 English class • Reason: Completed O/L English preparation syllabus early",
-                timestamp = now - (86400000L * 18), // 18 days ago
-                subjects = listOf("English"),
-                subjectLeft = "English",
-                departureReason = "Course Syllabus Completed Early",
-                note = "Outstanding marks in final institute assessment"
-            )
-        )
-
-        // Strict order: LATEST TO OLDEST
-        _historyEvents.value = sampleHistoryEvents.sortedByDescending { it.timestamp }
+        // 3. Check and initialize system_config / tuition_defaults document
+        db.collection("system_config").document("tuition_defaults").get()
+            .addOnSuccessListener { doc ->
+                if (doc == null || !doc.exists()) {
+                    Log.i("TuitionRepository", "system_config/tuition_defaults missing. Creating defaults...")
+                    val defaults = mapOf(
+                        "defaultSubjectFee" to 2500.0,
+                        "englishSubjectFee" to 1200.0,
+                        "currency" to "LKR",
+                        "createdAt" to System.currentTimeMillis()
+                    )
+                    db.collection("system_config").document("tuition_defaults")
+                        .set(defaults, SetOptions.merge())
+                        .addOnSuccessListener {
+                            onComplete?.invoke(true, "Firestore structure verified and initialized successfully.")
+                        }
+                } else {
+                    Log.i("TuitionRepository", "Existing system_config/tuition_defaults found in Firestore.")
+                    onComplete?.invoke(true, "Existing Firestore structure verified and ready.")
+                }
+            }
+            .addOnFailureListener { e ->
+                onComplete?.invoke(false, "Firestore verification error: ${e.message}")
+            }
     }
 
     private fun startCloudListeners() {
@@ -348,59 +155,57 @@ class TuitionRepository(
                         return@addSnapshotListener
                     }
 
-                    if (snapshot != null && !snapshot.isEmpty) {
+                    if (snapshot != null) {
                         _isCloudConnected.value = true
-                        val list = snapshot.documents.mapNotNull { doc ->
-                            try {
-                                val name = doc.getString("name") ?: ""
-                                val phone = doc.getString("phone") ?: ""
-                                val grade = doc.getLong("grade")?.toInt() ?: 10
-                                val medium = doc.getString("medium") ?: Student.MEDIUM_SINHALA
-                                val joinedDate = doc.getLong("joinedDate") ?: System.currentTimeMillis()
-                                val notes = doc.getString("notes") ?: ""
-                                
-                                val rawSubjects = doc.get("subjects") as? Map<*, *>
-                                val subjectsMap = mutableMapOf<String, Double>()
-                                rawSubjects?.forEach { (key, value) ->
-                                    if (key is String) {
-                                        val fee = when (value) {
-                                            is Number -> value.toDouble()
-                                            else -> 2500.0
+                        if (snapshot.isEmpty) {
+                            // Firestore collection is empty - keep list clean, do NOT add test students
+                            _students.value = emptyList()
+                        } else {
+                            val list = snapshot.documents.mapNotNull { doc ->
+                                try {
+                                    val name = doc.getString("name") ?: ""
+                                    val phone = doc.getString("phone") ?: ""
+                                    val grade = doc.getLong("grade")?.toInt() ?: 10
+                                    val medium = doc.getString("medium") ?: Student.MEDIUM_SINHALA
+                                    val joinedDate = doc.getLong("joinedDate") ?: System.currentTimeMillis()
+                                    val notes = doc.getString("notes") ?: ""
+                                    
+                                    val rawSubjects = doc.get("subjects") as? Map<*, *>
+                                    val subjectsMap = mutableMapOf<String, Double>()
+                                    rawSubjects?.forEach { (key, value) ->
+                                        if (key is String) {
+                                            val fee = when (value) {
+                                                is Number -> value.toDouble()
+                                                else -> 2500.0
+                                            }
+                                            subjectsMap[key] = fee
                                         }
-                                        subjectsMap[key] = fee
                                     }
-                                }
 
-                                val rawMediums = doc.get("subjectMediums") as? Map<*, *>
-                                val subjectMediumsMap = mutableMapOf<String, String>()
-                                rawMediums?.forEach { (key, value) ->
-                                    if (key is String && value is String) {
-                                        subjectMediumsMap[key] = value
+                                    val rawMediums = doc.get("subjectMediums") as? Map<*, *>
+                                    val subjectMediumsMap = mutableMapOf<String, String>()
+                                    rawMediums?.forEach { (key, value) ->
+                                        if (key is String && value is String) {
+                                            subjectMediumsMap[key] = value
+                                        }
                                     }
-                                }
 
-                                Student(
-                                    id = doc.id,
-                                    name = name,
-                                    phone = phone,
-                                    grade = grade,
-                                    medium = medium,
-                                    joinedDate = joinedDate,
-                                    subjects = if (subjectsMap.isEmpty()) mapOf("Maths" to 2500.0) else subjectsMap,
-                                    subjectMediums = subjectMediumsMap,
-                                    notes = notes
-                                )
-                            } catch (e: Exception) {
-                                null
+                                    Student(
+                                        id = doc.id,
+                                        name = name,
+                                        phone = phone,
+                                        grade = grade,
+                                        medium = medium,
+                                        joinedDate = joinedDate,
+                                        subjects = if (subjectsMap.isEmpty()) mapOf("Maths" to 2500.0) else subjectsMap,
+                                        subjectMediums = subjectMediumsMap,
+                                        notes = notes
+                                    )
+                                } catch (e: Exception) {
+                                    null
+                                }
                             }
-                        }
-                        if (list.isNotEmpty()) {
                             _students.value = list
-                        }
-                    } else {
-                        // Push starter data if cloud collection is blank
-                        if (_students.value.isNotEmpty()) {
-                            _students.value.forEach { addStudentToCloud(it) }
                         }
                     }
                 }
@@ -412,41 +217,43 @@ class TuitionRepository(
                         return@addSnapshotListener
                     }
 
-                    if (snapshot != null && !snapshot.isEmpty) {
+                    if (snapshot != null) {
                         _isCloudConnected.value = true
-                        val list = snapshot.documents.mapNotNull { doc ->
-                            try {
-                                val studentId = doc.getString("studentId") ?: ""
-                                val studentName = doc.getString("studentName") ?: ""
-                                val monthKey = doc.getString("monthKey") ?: ""
-                                val totalFeeDue = doc.getDouble("totalFeeDue") ?: 0.0
-                                val amountPaid = doc.getDouble("amountPaid") ?: 0.0
-                                val lastUpdated = doc.getLong("lastUpdated") ?: System.currentTimeMillis()
-                                
-                                val rawHistory = doc.get("history") as? List<Map<String, Any>>
-                                val historyList = rawHistory?.map { recordMap ->
-                                    PaymentRecord(
-                                        amount = (recordMap["amount"] as? Number)?.toDouble() ?: 0.0,
-                                        timestamp = (recordMap["timestamp"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                                        note = recordMap["note"] as? String ?: ""
-                                    )
-                                } ?: emptyList()
+                        if (snapshot.isEmpty) {
+                            _payments.value = emptyList()
+                        } else {
+                            val list = snapshot.documents.mapNotNull { doc ->
+                                try {
+                                    val studentId = doc.getString("studentId") ?: ""
+                                    val studentName = doc.getString("studentName") ?: ""
+                                    val monthKey = doc.getString("monthKey") ?: ""
+                                    val totalFeeDue = doc.getDouble("totalFeeDue") ?: 0.0
+                                    val amountPaid = doc.getDouble("amountPaid") ?: 0.0
+                                    val lastUpdated = doc.getLong("lastUpdated") ?: System.currentTimeMillis()
+                                    
+                                    val rawHistory = doc.get("history") as? List<Map<String, Any>>
+                                    val historyList = rawHistory?.map { recordMap ->
+                                        PaymentRecord(
+                                            amount = (recordMap["amount"] as? Number)?.toDouble() ?: 0.0,
+                                            timestamp = (recordMap["timestamp"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                                            note = recordMap["note"] as? String ?: ""
+                                        )
+                                    } ?: emptyList()
 
-                                MonthlyPayment(
-                                    id = doc.id,
-                                    studentId = studentId,
-                                    studentName = studentName,
-                                    monthKey = monthKey,
-                                    totalFeeDue = totalFeeDue,
-                                    amountPaid = amountPaid,
-                                    lastUpdated = lastUpdated,
-                                    history = historyList
-                                )
-                            } catch (e: Exception) {
-                                null
+                                    MonthlyPayment(
+                                        id = doc.id,
+                                        studentId = studentId,
+                                        studentName = studentName,
+                                        monthKey = monthKey,
+                                        totalFeeDue = totalFeeDue,
+                                        amountPaid = amountPaid,
+                                        lastUpdated = lastUpdated,
+                                        history = historyList
+                                    )
+                                } catch (e: Exception) {
+                                    null
+                                }
                             }
-                        }
-                        if (list.isNotEmpty()) {
                             _payments.value = list
                         }
                     }
@@ -458,45 +265,46 @@ class TuitionRepository(
                         Log.w("TuitionRepository", "History listen failed.", error)
                         return@addSnapshotListener
                     }
-                    if (snapshot != null && !snapshot.isEmpty) {
-                        val list = snapshot.documents.mapNotNull { doc ->
-                            try {
-                                val typeStr = doc.getString("type") ?: HistoryEventType.ENROLLMENT.name
-                                val type = try {
-                                    HistoryEventType.valueOf(typeStr)
-                                } catch (e: Exception) {
-                                    HistoryEventType.ENROLLMENT
-                                }
-                                val subjectsRaw = doc.get("subjects") as? List<*>
-                                val subjectsList = subjectsRaw?.mapNotNull { it as? String } ?: emptyList()
+                    if (snapshot != null) {
+                        _isCloudConnected.value = true
+                        if (snapshot.isEmpty) {
+                            _historyEvents.value = emptyList()
+                        } else {
+                            val list = snapshot.documents.mapNotNull { doc ->
+                                try {
+                                    val typeStr = doc.getString("type") ?: HistoryEventType.ENROLLMENT.name
+                                    val type = try {
+                                        HistoryEventType.valueOf(typeStr)
+                                    } catch (e: Exception) {
+                                        HistoryEventType.ENROLLMENT
+                                    }
+                                    val subjectsRaw = doc.get("subjects") as? List<*>
+                                    val subjectsList = subjectsRaw?.mapNotNull { it as? String } ?: emptyList()
 
-                                TuitionHistoryItem(
-                                    id = doc.id,
-                                    type = type,
-                                    studentId = doc.getString("studentId") ?: "",
-                                    studentName = doc.getString("studentName") ?: "",
-                                    studentGrade = doc.getLong("studentGrade")?.toInt() ?: 10,
-                                    studentMedium = doc.getString("studentMedium") ?: Student.MEDIUM_SINHALA,
-                                    studentPhone = doc.getString("studentPhone") ?: "",
-                                    title = doc.getString("title") ?: "",
-                                    description = doc.getString("description") ?: "",
-                                    timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
-                                    amount = doc.getDouble("amount"),
-                                    receiptId = doc.getString("receiptId"),
-                                    monthKey = doc.getString("monthKey"),
-                                    subjects = subjectsList,
-                                    subjectLeft = doc.getString("subjectLeft"),
-                                    departureReason = doc.getString("departureReason"),
-                                    note = doc.getString("note") ?: ""
-                                )
-                            } catch (e: Exception) {
-                                null
+                                    TuitionHistoryItem(
+                                        id = doc.id,
+                                        type = type,
+                                        studentId = doc.getString("studentId") ?: "",
+                                        studentName = doc.getString("studentName") ?: "",
+                                        studentGrade = doc.getLong("studentGrade")?.toInt() ?: 10,
+                                        studentMedium = doc.getString("studentMedium") ?: Student.MEDIUM_SINHALA,
+                                        studentPhone = doc.getString("studentPhone") ?: "",
+                                        title = doc.getString("title") ?: "",
+                                        description = doc.getString("description") ?: "",
+                                        timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
+                                        amount = doc.getDouble("amount"),
+                                        receiptId = doc.getString("receiptId"),
+                                        monthKey = doc.getString("monthKey"),
+                                        subjects = subjectsList,
+                                        subjectLeft = doc.getString("subjectLeft"),
+                                        departureReason = doc.getString("departureReason"),
+                                        note = doc.getString("note") ?: ""
+                                    )
+                                } catch (e: Exception) {
+                                    null
+                                }
                             }
-                        }
-                        if (list.isNotEmpty()) {
-                            val existingMap = _historyEvents.value.associateBy { it.id }.toMutableMap()
-                            list.forEach { existingMap[it.id] = it }
-                            _historyEvents.value = existingMap.values.sortedByDescending { it.timestamp }
+                            _historyEvents.value = list.sortedByDescending { it.timestamp }
                         }
                     }
                 }
@@ -733,6 +541,54 @@ class TuitionRepository(
     fun addHistoryEvent(event: TuitionHistoryItem) {
         _historyEvents.value = (_historyEvents.value + event).sortedByDescending { it.timestamp }
         saveHistoryEventToCloud(event)
+    }
+
+    fun deleteHistoryEvent(eventId: String) {
+        _historyEvents.value = _historyEvents.value.filterNot { it.id == eventId }
+        firestore?.collection("history_events")?.document(eventId)?.delete()
+            ?.addOnFailureListener { e ->
+                Log.e("TuitionRepository", "Failed to delete history event: $eventId", e)
+            }
+    }
+
+    fun deleteHistoryEvents(eventIds: Set<String>) {
+        if (eventIds.isEmpty()) return
+        _historyEvents.value = _historyEvents.value.filterNot { it.id in eventIds }
+        val db = firestore ?: return
+        try {
+            eventIds.chunked(450).forEach { chunk ->
+                val batch = db.batch()
+                chunk.forEach { id ->
+                    val ref = db.collection("history_events").document(id)
+                    batch.delete(ref)
+                }
+                batch.commit().addOnFailureListener { e ->
+                    Log.e("TuitionRepository", "Failed to batch delete history events", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("TuitionRepository", "Error batch deleting history events", e)
+        }
+    }
+
+    fun deleteAllHistoryEvents() {
+        val allIds = _historyEvents.value.map { it.id }
+        _historyEvents.value = emptyList()
+        val db = firestore ?: return
+        try {
+            allIds.chunked(450).forEach { chunk ->
+                val batch = db.batch()
+                chunk.forEach { id ->
+                    val ref = db.collection("history_events").document(id)
+                    batch.delete(ref)
+                }
+                batch.commit().addOnFailureListener { e ->
+                    Log.e("TuitionRepository", "Failed to clear all history events", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("TuitionRepository", "Error clearing all history events", e)
+        }
     }
 
     private fun saveHistoryEventToCloud(event: TuitionHistoryItem) {

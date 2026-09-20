@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -81,6 +82,7 @@ fun SettingsDialog(
     onResetBiometric: () -> Unit,
     onChangePassword: (oldPass: String, newPass: String, (Boolean, String) -> Unit) -> Unit,
     onResetPassword: (email: String, (Boolean, String) -> Unit) -> Unit,
+    onVerifyFirestoreStructure: (((Boolean, String) -> Unit) -> Unit)? = null,
     onDismiss: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -91,6 +93,9 @@ fun SettingsDialog(
     var passwordChangeMessage by remember { mutableStateOf<String?>(null) }
     var isChangingPassword by remember { mutableStateOf(false) }
     var passVisible by remember { mutableStateOf(false) }
+
+    var isVerifyingFirestore by remember { mutableStateOf(false) }
+    var firestoreVerificationResult by remember { mutableStateOf<String?>(null) }
 
     var biometricResetSuccessMessage by remember { mutableStateOf<String?>(null) }
     var showResetBiometricConfirm by remember { mutableStateOf(false) }
@@ -472,33 +477,68 @@ fun SettingsDialog(
                             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     )
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (isCloudConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                            contentDescription = null,
-                            tint = if (isCloudConnected) StatusPaidGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = if (isCloudConnected) "Firebase Firestore Connected" else "Local / Offline Mode Active",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (isCloudConnected) StatusPaidGreen else MaterialTheme.colorScheme.onSurface
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isCloudConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                contentDescription = null,
+                                tint = if (isCloudConnected) StatusPaidGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
                             )
-                            Text(
-                                text = if (isCloudConnected)
-                                    "Changes sync in real-time across all devices."
-                                else
-                                    "Data persists locally and will sync when cloud is reached.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (isCloudConnected) "Firebase Firestore Connected" else "Local / Offline Mode Active",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = if (isCloudConnected) StatusPaidGreen else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (isCloudConnected)
+                                        "Changes sync in real-time across all devices."
+                                    else
+                                        "Data persists locally and will sync when cloud is reached.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (isCloudConnected && onVerifyFirestoreStructure != null) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    isVerifyingFirestore = true
+                                    firestoreVerificationResult = null
+                                    onVerifyFirestoreStructure { success, msg ->
+                                        isVerifyingFirestore = false
+                                        firestoreVerificationResult = msg
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (isVerifyingFirestore) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Verifying Firestore Structure...")
+                                } else {
+                                    Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Verify & Auto-Init Firestore Tables", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+
+                            if (firestoreVerificationResult != null) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = firestoreVerificationResult!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
                 }

@@ -26,7 +26,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
@@ -38,10 +46,13 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -116,9 +127,19 @@ fun PaymentHistorySection(
     onRecordPaymentForStudent: (StudentPaymentUiItem) -> Unit,
     onOpenQuickRecordPayment: () -> Unit,
     onOpenRecordClassLeaving: () -> Unit,
-    onOpenAddStudent: () -> Unit
+    onOpenAddStudent: () -> Unit,
+    onDeleteHistoryEvent: ((String) -> Unit)? = null,
+    onDeleteHistoryEvents: ((Set<String>) -> Unit)? = null,
+    onDeleteAllHistoryEvents: (() -> Unit)? = null
 ) {
     var showMonthMenu by remember { mutableStateOf(false) }
+
+    // Multi-Selection and Deletion States
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var selectedEventIds by remember { mutableStateOf(setOf<String>()) }
+    var eventToDeleteSingle by remember { mutableStateOf<TuitionHistoryItem?>(null) }
+    var showDeleteSelectedConfirm by remember { mutableStateOf(false) }
+    var showDeleteAllConfirm by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
@@ -610,16 +631,162 @@ fun PaymentHistorySection(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "History Feed (Latest to Oldest)",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "${historyEvents.size} entries",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Column {
+                        Text(
+                            text = "History Feed (Latest to Oldest)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "${historyEvents.size} entries",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (historyEvents.isNotEmpty() && !isSelectionMode) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    isSelectionMode = true
+                                    selectedEventIds = emptySet()
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("btn_select_history_mode")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Checklist,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Select",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = { showDeleteAllConfirm = true },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusUnpaidRed),
+                                border = BorderStroke(1.dp, StatusUnpaidRed.copy(alpha = 0.4f)),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("btn_delete_all_history")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteSweep,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Delete All",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Selection Mode Control Bar
+            if (isSelectionMode && historyEvents.isNotEmpty()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = PrimaryBlue.copy(alpha = 0.08f)),
+                        border = BorderStroke(1.dp, PrimaryBlue.copy(alpha = 0.25f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = selectedEventIds.size == historyEvents.size && historyEvents.isNotEmpty(),
+                                    onCheckedChange = { checked ->
+                                        selectedEventIds = if (checked) historyEvents.map { it.id }.toSet() else emptySet()
+                                    },
+                                    colors = CheckboxDefaults.colors(checkedColor = PrimaryBlue)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "${selectedEventIds.size} / ${historyEvents.size} selected",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        selectedEventIds = if (selectedEventIds.size == historyEvents.size) {
+                                            emptySet()
+                                        } else {
+                                            historyEvents.map { it.id }.toSet()
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = if (selectedEventIds.size == historyEvents.size) "Deselect All" else "Select All",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = PrimaryBlue
+                                    )
+                                }
+
+                                Button(
+                                    onClick = { showDeleteSelectedConfirm = true },
+                                    enabled = selectedEventIds.isNotEmpty(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = StatusUnpaidRed,
+                                        disabledContainerColor = StatusUnpaidRed.copy(alpha = 0.3f)
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.testTag("btn_delete_selected_history")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Delete (${selectedEventIds.size})",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        isSelectionMode = false
+                                        selectedEventIds = emptySet()
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Exit selection mode",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -637,7 +804,19 @@ fun PaymentHistorySection(
                 items(historyEvents, key = { it.id }) { eventItem ->
                     UnifiedHistoryEventCard(
                         item = eventItem,
-                        onOpenReceipt = { onOpenReceiptFromHistory(eventItem) }
+                        isSelectionMode = isSelectionMode,
+                        isSelected = selectedEventIds.contains(eventItem.id),
+                        onToggleSelect = {
+                            selectedEventIds = if (selectedEventIds.contains(eventItem.id)) {
+                                selectedEventIds - eventItem.id
+                            } else {
+                                selectedEventIds + eventItem.id
+                            }
+                        },
+                        onOpenReceipt = { onOpenReceiptFromHistory(eventItem) },
+                        onDelete = {
+                            eventToDeleteSingle = eventItem
+                        }
                     )
                 }
             }
@@ -693,6 +872,192 @@ fun PaymentHistorySection(
             Spacer(modifier = Modifier.height(72.dp))
         }
     }
+
+    // --- DIALOG: Single Action Delete Confirmation ---
+    eventToDeleteSingle?.let { event ->
+        AlertDialog(
+            onDismissRequest = { eventToDeleteSingle = null },
+            icon = {
+                Surface(
+                    shape = CircleShape,
+                    color = StatusUnpaidRed.copy(alpha = 0.12f),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = null,
+                            tint = StatusUnpaidRed,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            },
+            title = {
+                Text(
+                    text = "Delete Action Record",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Are you sure you want to delete this action from the history feed?",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = event.title,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "${event.studentName} • ${event.formattedDate}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Text(
+                        text = "This record will be permanently deleted from cloud database.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteHistoryEvent?.invoke(event.id)
+                        eventToDeleteSingle = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusUnpaidRed)
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { eventToDeleteSingle = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // --- DIALOG: Selected Actions Delete Confirmation ---
+    if (showDeleteSelectedConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteSelectedConfirm = false },
+            icon = {
+                Surface(
+                    shape = CircleShape,
+                    color = StatusUnpaidRed.copy(alpha = 0.12f),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteSweep,
+                            contentDescription = null,
+                            tint = StatusUnpaidRed,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            },
+            title = {
+                Text(
+                    text = "Delete Selected Actions",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to permanently delete the ${selectedEventIds.size} selected actions from the history feed? This cannot be undone.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteHistoryEvents?.invoke(selectedEventIds)
+                        selectedEventIds = emptySet()
+                        isSelectionMode = false
+                        showDeleteSelectedConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusUnpaidRed)
+                ) {
+                    Text("Delete (${selectedEventIds.size})", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showDeleteSelectedConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // --- DIALOG: Delete All History Actions Confirmation ---
+    if (showDeleteAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllConfirm = false },
+            icon = {
+                Surface(
+                    shape = CircleShape,
+                    color = StatusUnpaidRed.copy(alpha = 0.12f),
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteForever,
+                            contentDescription = null,
+                            tint = StatusUnpaidRed,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            },
+            title = {
+                Text(
+                    text = "Delete All History",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to permanently delete ALL ${historyEvents.size} history actions? The entire timeline will be erased from the cloud. This cannot be undone.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteAllHistoryEvents?.invoke()
+                        selectedEventIds = emptySet()
+                        isSelectionMode = false
+                        showDeleteAllConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusUnpaidRed)
+                ) {
+                    Text("Delete All", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showDeleteAllConfirm = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
 // ==========================================
@@ -702,16 +1067,31 @@ fun PaymentHistorySection(
 @Composable
 fun UnifiedHistoryEventCard(
     item: TuitionHistoryItem,
-    onOpenReceipt: () -> Unit
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
+    onOpenReceipt: () -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("history_event_${item.id}"),
+            .testTag("history_event_${item.id}")
+            .then(
+                if (isSelectionMode) {
+                    Modifier.clickable { onToggleSelect() }
+                } else Modifier
+            ),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) PrimaryBlue.copy(alpha = 0.06f) else MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 1.5.dp),
+        border = if (isSelected) {
+            BorderStroke(2.dp, PrimaryBlue)
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+        }
     ) {
         Column(
             modifier = Modifier
@@ -719,11 +1099,22 @@ fun UnifiedHistoryEventCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Header Row: Avatar, Event Badge, Title, Timestamp
+            // Header Row: Avatar, Event Badge, Title, Timestamp, Delete action
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Top
             ) {
+                if (isSelectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { onToggleSelect() },
+                        colors = CheckboxDefaults.colors(checkedColor = PrimaryBlue),
+                        modifier = Modifier
+                            .align(Alignment.CenterVertically)
+                            .padding(end = 4.dp)
+                    )
+                }
+
                 // Event Icon Avatar
                 val (bgColor, iconColor, icon) = when (item.type) {
                     HistoryEventType.ENROLLMENT -> Triple(StatusPaidGreen.copy(alpha = 0.15f), StatusPaidGreen, Icons.Default.PersonAdd)
@@ -774,12 +1165,30 @@ fun UnifiedHistoryEventCard(
                             )
                         }
 
-                        // Timestamp (Formatted)
-                        Text(
-                            text = item.formattedDate,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        // Timestamp (Formatted) and One-by-One Delete Button
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = item.formattedDate,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (onDelete != null) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = onDelete,
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .testTag("btn_delete_action_${item.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Delete this action",
+                                        tint = StatusUnpaidRed.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))

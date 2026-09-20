@@ -632,7 +632,10 @@ fun TuitionDashboardScreen(
                         onRecordPaymentForStudent = { viewModel.openRecordPayment(it) },
                         onOpenQuickRecordPayment = { viewModel.openQuickPaymentPicker() },
                         onOpenRecordClassLeaving = { viewModel.openRecordClassLeaving() },
-                        onOpenAddStudent = { viewModel.openAddStudent() }
+                        onOpenAddStudent = { viewModel.openAddStudent() },
+                        onDeleteHistoryEvent = { viewModel.deleteHistoryEvent(it) },
+                        onDeleteHistoryEvents = { viewModel.deleteHistoryEvents(it) },
+                        onDeleteAllHistoryEvents = { viewModel.deleteAllHistoryEvents() }
                     )
                 }
             }
@@ -740,6 +743,9 @@ fun TuitionDashboardScreen(
             },
             onResetPassword = { email, callback ->
                 viewModel.resetPassword(email, callback)
+            },
+            onVerifyFirestoreStructure = { callback ->
+                viewModel.verifyFirestoreStructure(callback)
             },
             onDismiss = { viewModel.closeSettings() },
             onLogout = {
